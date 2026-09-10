@@ -1,0 +1,6 @@
+{
+  "name": "Customer Review System",
+  "description": "Dynamic customer review and rating system with customer submission and admin moderation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
