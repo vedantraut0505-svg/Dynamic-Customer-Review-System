@@ -107,8 +107,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadPublicReviews();
-  }, [customerSort]);
+    if (currentView === 'customer') {
+      loadPublicReviews();
+    }
+  }, [customerSort, currentView]);
 
   // Dark mode class toggle
   useEffect(() => {

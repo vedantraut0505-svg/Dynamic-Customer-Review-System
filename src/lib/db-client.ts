@@ -139,15 +139,17 @@ export async function fetchAdminReviews(filters: { status?: string, rating?: num
 export async function createReview(data: Partial<ReviewItem>) {
   try {
     const docRef = doc(collection(db, 'reviews'));
-    const reviewData = {
+    const reviewData: any = {
       customerName: data.customerName,
       email: data.email,
       rating: data.rating,
       reviewText: data.reviewText,
       status: 'pending',
-      imageUrl: data.imageUrl || null,
       createdAt: serverTimestamp(),
     };
+    if (data.imageUrl) {
+      reviewData.imageUrl = data.imageUrl;
+    }
     await setDoc(docRef, reviewData);
     return { id: docRef.id, ...reviewData };
   } catch (err) {
