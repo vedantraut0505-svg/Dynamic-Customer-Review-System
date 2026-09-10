@@ -20,6 +20,7 @@ import { ReviewFormModal } from './components/ReviewFormModal.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { ToastContainer } from './components/Toast.tsx';
 import { ReviewItem, ReviewStats, ToastMessage } from './types.ts';
+import { fetchPublicReviews, checkIsAdmin } from './lib/db-client.ts';
 import { auth } from './lib/firebase.ts';
 import { onAuthStateChanged, User } from 'firebase/auth';
 
@@ -43,11 +44,10 @@ export default function App() {
   // Modals & UI States
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isAdminMode, setIsAdminMode] = useState(true);
 
   // Auth
   const [user, setUser] = useState<User | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -70,33 +70,30 @@ export default function App() {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const token = await currentUser.getIdToken();
-          setAuthToken(token);
-          // Sync user with Cloud SQL
-          await fetch('/api/auth/sync-user', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-          });
+          const adminStatus = await checkIsAdmin(currentUser.uid, currentUser.email);
+          setIsAdmin(adminStatus);
+          
+          if (!adminStatus && currentView === 'admin') {
+            setCurrentView('customer');
+          }
         } catch (err) {
-          console.error('Auth token fetch error:', err);
+          console.error('Auth state change error:', err);
         }
       } else {
-        setAuthToken(null);
+        setIsAdmin(false);
+        if (currentView === 'admin') {
+          setCurrentView('customer');
+        }
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentView]);
 
   // Fetch public approved reviews
-  const fetchPublicReviews = async () => {
+  const loadPublicReviews = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/reviews/public?sort=${customerSort}`);
-      if (!res.ok) throw new Error('Failed to load reviews');
-      const data = await res.json();
+      const data = await fetchPublicReviews(customerSort);
       setReviews(data.reviews || []);
       if (data.stats) {
         setStats(data.stats);
@@ -110,7 +107,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchPublicReviews();
+    loadPublicReviews();
   }, [customerSort]);
 
   // Dark mode class toggle
@@ -136,7 +133,7 @@ export default function App() {
 
   const handleReviewSuccess = (msg: string) => {
     addToast('Review Submitted', msg, 'success');
-    fetchPublicReviews();
+    loadPublicReviews();
   };
 
   return (
@@ -149,8 +146,7 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
         user={user}
-        isAdminMode={isAdminMode}
-        onToggleAdminMode={() => setIsAdminMode(!isAdminMode)}
+        isAdmin={isAdmin}
       />
 
       {/* Main Container */}
@@ -185,13 +181,15 @@ export default function App() {
                     Write a Review
                   </button>
 
-                  <button
-                    onClick={() => setCurrentView('admin')}
-                    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm bg-white/15 hover:bg-white/20 backdrop-blur-md text-white border border-white/20 active:scale-[0.98] transition-all cursor-pointer"
-                  >
-                    <Shield className="w-4 h-4" />
-                    Go to Moderation ({stats.pending} pending)
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setCurrentView('admin')}
+                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm bg-white/15 hover:bg-white/20 backdrop-blur-md text-white border border-white/20 active:scale-[0.98] transition-all cursor-pointer"
+                    >
+                      <Shield className="w-4 h-4" />
+                      Go to Moderation ({stats.pending} pending)
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -246,7 +244,7 @@ export default function App() {
                   </select>
 
                   <button
-                    onClick={fetchPublicReviews}
+                    onClick={loadPublicReviews}
                     className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                     title="Refresh reviews"
                   >
@@ -377,8 +375,6 @@ export default function App() {
             {/* Admin Dashboard Component */}
             <AdminDashboard
               onNotify={addToast}
-              authToken={authToken}
-              adminKey="admin-secret-preview"
             />
           </div>
         )}

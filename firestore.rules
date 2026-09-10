@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { 
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'vedantraut0505@gmail.com'
+      ); 
+    }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // Entities
+    function isValidReview(data) {
+      return data.keys().hasAll(['customerName', 'email', 'rating', 'reviewText', 'status', 'createdAt']) &&
+             data.keys().size() >= 6 && data.keys().size() <= 8 &&
+             data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.reviewText is string && data.reviewText.size() >= 5 && data.reviewText.size() <= 2000 &&
+             data.status is string && data.status in ['pending', 'approved', 'rejected'] &&
+             data.createdAt is timestamp &&
+             (data.keys().hasAll(['imageUrl']) ? (data.imageUrl is string && data.imageUrl.size() <= 500) : true) &&
+             (data.keys().hasAll(['updatedAt']) ? data.updatedAt is timestamp : true);
+    }
+    
+    match /reviews/{reviewId} {
+      allow read: if isValidId(reviewId) && (isAdmin() || (existing().status == 'approved'));
+      allow list: if isAdmin() || resource.data.status == 'approved';
+      
+      allow create: if isValidId(reviewId) && isValidReview(incoming()) && 
+                    incoming().status == 'pending' &&
+                    incoming().createdAt == request.time;
+                    
+      allow update: if isValidId(reviewId) && isValidReview(incoming()) && isAdmin() &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().updatedAt == request.time;
+                    
+      allow delete: if isValidId(reviewId) && isAdmin();
+    }
+    
+    match /admins/{adminId} {
+      // Admins collection can only be read by admins
+      allow read, list: if isAdmin();
+      // No writes from client
+      allow write: if false;
+    }
+  }
+}

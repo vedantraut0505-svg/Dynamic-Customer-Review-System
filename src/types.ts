@@ -1,5 +1,5 @@
 export interface ReviewItem {
-  id: number;
+  id: string;
   customerName: string;
   email: string;
   rating: number;

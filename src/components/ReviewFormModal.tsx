@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { RatingStars } from './RatingStars.tsx';
+import { createReview } from '../lib/db-client.ts';
 
 interface ReviewFormModalProps {
   isOpen: boolean;
@@ -92,25 +93,14 @@ export const ReviewFormModal: React.FC<ReviewFormModalProps> = ({
 
     try {
       setLoading(true);
-      const res = await fetch('/api/reviews', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customerName: customerName.trim(),
-          email: email.trim(),
-          rating,
-          reviewText: reviewText.trim(),
-          imageUrl,
-        }),
+      
+      await createReview({
+        customerName: customerName.trim(),
+        email: email.trim(),
+        rating,
+        reviewText: reviewText.trim(),
+        imageUrl,
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to submit review.');
-      }
 
       setIsSubmitted(true);
       onSuccess('Your review has been submitted for moderation! Status: Pending.');

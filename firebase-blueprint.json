@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Review": {
+      "title": "Review",
+      "description": "A customer review.",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "rating": { "type": "number" },
+        "reviewText": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      },
+      "required": ["customerName", "email", "rating", "reviewText", "status", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "An administrator.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      }
+    }
+  },
+  "firestore": {
+    "reviews": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Stores all customer reviews."
+    },
+    "admins": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Stores list of authorized admin user UIDs."
+    }
+  }
+}

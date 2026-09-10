@@ -20,17 +20,14 @@ import {
 } from 'lucide-react';
 import { RatingStars } from './RatingStars.tsx';
 import { ReviewItem, ReviewStats } from '../types.ts';
+import { fetchAdminReviews, updateReviewStatus, deleteReview, editReview } from '../lib/db-client.ts';
 
 interface AdminDashboardProps {
   onNotify: (title: string, message: string, type: 'success' | 'error' | 'info') => void;
-  authToken?: string | null;
-  adminKey?: string | null;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onNotify,
-  authToken,
-  adminKey,
 }) => {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [stats, setStats] = useState<ReviewStats>({
@@ -43,7 +40,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const [loading, setLoading] = useState(true);
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
@@ -63,41 +60,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editSubmitting, setEditSubmitting] = useState(false);
 
   // Delete Confirmation State
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const getHeaders = (): Record<string, string> => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
-    if (adminKey) {
-      headers['x-admin-key'] = adminKey;
-    }
-    // Set admin mode fallback
-    headers['x-admin-mode'] = 'true';
-    return headers;
-  };
-
-  const fetchAdminReviews = async () => {
+  const loadAdminReviews = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      if (ratingFilter > 0) params.set('rating', ratingFilter.toString());
-      if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      params.set('sort', sortOption);
-
-      const res = await fetch(`/api/reviews/admin?${params.toString()}`, {
-        headers: getHeaders(),
+      const data = await fetchAdminReviews({
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        rating: ratingFilter > 0 ? ratingFilter : undefined,
+        search: searchQuery.trim() || undefined,
+        sort: sortOption
       });
 
-      if (!res.ok) {
-        throw new Error(`Failed to load reviews (${res.status})`);
-      }
-
-      const data = await res.json();
       setReviews(data.reviews || []);
       if (data.stats) {
         setStats(data.stats);
@@ -111,32 +85,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   useEffect(() => {
-    fetchAdminReviews();
+    loadAdminReviews();
   }, [statusFilter, ratingFilter, sortOption]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchAdminReviews();
+    loadAdminReviews();
   };
 
   // Quick Status Action (Approve / Reject)
-  const handleUpdateStatus = async (id: number, newStatus: 'approved' | 'rejected' | 'pending') => {
+  const handleUpdateStatus = async (id: string, newStatus: 'approved' | 'rejected' | 'pending') => {
     try {
       setActionLoadingId(id);
-      const res = await fetch(`/api/reviews/admin/${id}/status`, {
-        method: 'PATCH',
-        headers: getHeaders(),
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to update review status');
-      }
+      
+      await updateReviewStatus(id, newStatus);
 
       onNotify(
         'Review Updated',
-        `Review #${id} status changed to "${newStatus}".`,
+        `Review #${id.slice(-6)} status changed to "${newStatus}".`,
         newStatus === 'approved' ? 'success' : 'info'
       );
 
@@ -145,7 +111,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
       );
       // Re-fetch stats in background
-      fetchAdminReviews();
+      loadAdminReviews();
     } catch (err: any) {
       console.error('Update status error:', err);
       onNotify('Action Failed', err.message || 'Could not update review status.', 'error');
@@ -155,23 +121,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Delete Action
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       setActionLoadingId(id);
-      const res = await fetch(`/api/reviews/admin/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(),
-      });
+      
+      await deleteReview(id);
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete review');
-      }
-
-      onNotify('Review Deleted', `Review #${id} has been permanently removed.`, 'info');
+      onNotify('Review Deleted', `Review #${id.slice(-6)} has been permanently removed.`, 'info');
       setReviews((prev) => prev.filter((r) => r.id !== id));
       setDeletingId(null);
-      fetchAdminReviews();
+      loadAdminReviews();
     } catch (err: any) {
       console.error('Delete error:', err);
       onNotify('Delete Failed', err.message || 'Could not delete review.', 'error');
@@ -187,20 +146,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       setEditSubmitting(true);
-      const res = await fetch(`/api/reviews/admin/${editingReview.id}`, {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify(editForm),
-      });
+      
+      await editReview(editingReview.id, editForm);
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to update review');
-      }
-
-      onNotify('Review Saved', `Review #${editingReview.id} updated successfully.`, 'success');
+      onNotify('Review Saved', `Review #${editingReview.id.slice(-6)} updated successfully.`, 'success');
       setEditingReview(null);
-      fetchAdminReviews();
+      loadAdminReviews();
     } catch (err: any) {
       console.error('Edit error:', err);
       onNotify('Edit Failed', err.message || 'Could not save review changes.', 'error');
@@ -724,7 +675,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Delete Review #{deletingId}?
+                Delete Review #{deletingId?.slice(-6)}?
               </h4>
               <p className="text-xs text-slate-500">
                 This action cannot be undone. The review record will be permanently deleted from the database.
